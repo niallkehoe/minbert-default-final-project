@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from base_bert import BertPreTrainedModel
 from utils import *
-
+import math 
 
 class BertSelfAttention(nn.Module):
   def __init__(self, config):
@@ -48,9 +48,12 @@ class BertSelfAttention(nn.Module):
     # - Multiply the attention scores with the value to get back weighted values.
     # - Before returning, concatenate multi-heads to recover the original shape:
     #   [bs, seq_len, num_attention_heads * attention_head_size = hidden_size].
-
-    ### TODO
-    raise NotImplementedError
+    query_multiply = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(self.attention_head_size)
+    if attention_mask is not None: 
+      query_multiply += attention_mask
+    normalization_attention = self.dropout(F.softmax(query_multiply, dim=-1))
+    v_prime = torch.matmul(normalization_attention, value)
+    return v_prime.permute(0,2,1,3).reshape(key.size(0), key.size(2), -1)
 
 
   def forward(self, hidden_states, attention_mask):
