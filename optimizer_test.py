@@ -23,6 +23,8 @@ def test_optimizer(opt_class) -> torch.Tensor:
         loss = ((y - y_hat) ** 2).sum()
         loss.backward()
         opt.step()
+
+    # return the model weights
     return model.weight.detach()
 
 
