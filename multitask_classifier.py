@@ -80,7 +80,9 @@ class MultitaskBERT(nn.Module):
 
         # Semantic Textual Similarity layer
         self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
-
+        
+        # Dropout layer
+        self.dropout_sentiment = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -119,6 +121,8 @@ class MultitaskBERT(nn.Module):
         # get the classification embedding from the last hidden state
         # classification_embedding = last_hidden_state[:, 0, :]
 
+        classification_embeddings = self.dropout_sentiment(classification_embeddings)
+
         # pass the classification embedding through the sentiment classifier
         sentiment_logits = self.sentiment_classifier(classification_embeddings)
 
@@ -149,6 +153,10 @@ class MultitaskBERT(nn.Module):
         # concatenate the classification embeddings
         # combined_cls_embedding = torch.cat((cls_embedding_1, cls_embedding_2), dim=1)
 
+        # dropout the classification embeddings
+        class_embed_1 = self.dropout_sentiment(class_embed_1)
+        class_embed_2 = self.dropout_sentiment(class_embed_2)
+
         combined_cls_embedding = torch.cat((class_embed_1, class_embed_2), dim=1)
 
         # pass the combined classification embedding through the paraphrase classifier
@@ -177,6 +185,10 @@ class MultitaskBERT(nn.Module):
 
         class_embedding_1 = self.forward(input_ids_1, attention_mask_1)
         class_embedding_2 = self.forward(input_ids_2, attention_mask_2)
+
+        # dropout the classification embeddings
+        class_embedding_1 = self.dropout_sentiment(class_embedding_1)
+        class_embedding_2 = self.dropout_sentiment(class_embedding_2)
 
         # concatenate the classification embeddings
         # combined_classification_embedding = torch.cat((classification_embedding_1, classification_embedding_2), dim=1)
