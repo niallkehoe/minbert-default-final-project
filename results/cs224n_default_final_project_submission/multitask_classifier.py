@@ -85,30 +85,14 @@ class MultitaskBERT(nn.Module):
         raise NotImplementedError
 
 
-    # NIALL
-
     def predict_sentiment(self, input_ids, attention_mask):
         '''Given a batch of sentences, outputs logits for classifying sentiment.
         There are 5 sentiment classes:
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         '''
-        
-        # encode the input_ids and attention_mask using the BERT model
-        outputs = self.bert(input_ids, attention_mask)
-
-        # get the last hidden state from the outputs
-        last_hidden_state = outputs.last_hidden_state
-
-        # get the classification embedding from the last hidden state
-        classification_embedding = last_hidden_state[:, 0, :]
-
-        # pass the classification embedding through the sentiment classifier
-        sentiment_logits = self.sentiment_classifier(classification_embedding)
-
-        return sentiment_logits
-        
-
+        ### TODO
+        raise NotImplementedError
 
 
     def predict_paraphrase(self,
@@ -118,27 +102,8 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         '''
-        
-        # encode the input_ids and attention_mask using the BERT model
-        outputs_1 = self.bert(input_ids_1, attention_mask_1)
-        outputs_2 = self.bert(input_ids_2, attention_mask_2)
-
-        # get the last hidden state from the outputs
-        last_hidden_state_1 = outputs_1.last_hidden_state
-        last_hidden_state_2 = outputs_2.last_hidden_state
-
-        # get the classification embedding from the last hidden state
-        cls_embedding_1 = last_hidden_state_1[:, 0, :]
-        cls_embedding_2 = last_hidden_state_2[:, 0, :]
-
-        # concatenate the classification embeddings
-        combined_cls_embedding = torch.cat((cls_embedding_1, cls_embedding_2), dim=1)
-
-        # pass the combined classification embedding through the paraphrase classifier
-        paraphrase_logits = self.paraphrase_classifier(combined_cls_embedding)
-        
-        return paraphrase_logits
-    
+        ### TODO
+        raise NotImplementedError
 
 
     def predict_similarity(self,
