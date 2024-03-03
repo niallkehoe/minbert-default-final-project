@@ -82,7 +82,8 @@ class MultitaskBERT(nn.Module):
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
         ### TODO
-        raise NotImplementedError
+        output = self.bert(input_ids, attention_mask)
+        return output['pooler_output']
 
 
     # NIALL
