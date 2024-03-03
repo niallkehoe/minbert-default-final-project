@@ -93,10 +93,12 @@ class MultitaskBERT(nn.Module):
         outputs = self.bert(input_ids, attention_mask)
 
         # get the last hidden state from the outputs
-        last_hidden_state = outputs.last_hidden_state
+        # last_hidden_state = outputs.last_hidden_state
 
         # get the classification embedding from the last hidden state
-        classification_embedding = last_hidden_state[:, 0, :]
+        # classification_embedding = last_hidden_state[:, 0, :]
+
+        classification_embedding = outputs['pooler_output']
 
         return classification_embedding
 
@@ -108,16 +110,17 @@ class MultitaskBERT(nn.Module):
         '''
         
         # encode the input_ids and attention_mask using the BERT model
-        outputs = self.bert(input_ids, attention_mask)
+        # outputs = self.bert(input_ids, attention_mask)
+        classification_embeddings = self.forward(input_ids, attention_mask)
 
         # get the last hidden state from the outputs
-        last_hidden_state = outputs.last_hidden_state
+        # last_hidden_state = outputs.last_hidden_state
 
         # get the classification embedding from the last hidden state
-        classification_embedding = last_hidden_state[:, 0, :]
+        # classification_embedding = last_hidden_state[:, 0, :]
 
         # pass the classification embedding through the sentiment classifier
-        sentiment_logits = self.sentiment_classifier(classification_embedding)
+        sentiment_logits = self.sentiment_classifier(classification_embeddings)
 
         return sentiment_logits
         
@@ -130,19 +133,23 @@ class MultitaskBERT(nn.Module):
         '''
         
         # encode the input_ids and attention_mask using the BERT model
-        outputs_1 = self.bert(input_ids_1, attention_mask_1)
-        outputs_2 = self.bert(input_ids_2, attention_mask_2)
+        # outputs_1 = self.bert(input_ids_1, attention_mask_1)
+        # outputs_2 = self.bert(input_ids_2, attention_mask_2)
+        class_embed_1 = self.forward(input_ids_1, attention_mask_1)
+        class_embed_2 = self.forward(input_ids_2, attention_mask_2)
 
         # get the last hidden state from the outputs
-        last_hidden_state_1 = outputs_1.last_hidden_state
-        last_hidden_state_2 = outputs_2.last_hidden_state
+        # last_hidden_state_1 = outputs_1.last_hidden_state
+        # last_hidden_state_2 = outputs_2.last_hidden_state
 
         # get the classification embedding from the last hidden state
-        cls_embedding_1 = last_hidden_state_1[:, 0, :]
-        cls_embedding_2 = last_hidden_state_2[:, 0, :]
+        # cls_embedding_1 = last_hidden_state_1[:, 0, :]
+        # cls_embedding_2 = last_hidden_state_2[:, 0, :]
 
         # concatenate the classification embeddings
-        combined_cls_embedding = torch.cat((cls_embedding_1, cls_embedding_2), dim=1)
+        # combined_cls_embedding = torch.cat((cls_embedding_1, cls_embedding_2), dim=1)
+
+        combined_cls_embedding = torch.cat((class_embed_1, class_embed_2), dim=1)
 
         # pass the combined classification embedding through the paraphrase classifier
         paraphrase_logits = self.paraphrase_classifier(combined_cls_embedding)
@@ -157,22 +164,26 @@ class MultitaskBERT(nn.Module):
         '''
         
         # encode the input_ids and attention_mask using the BERT model
-        outputs_1 = self.bert(input_ids_1, attention_mask_1)
-        outputs_2 = self.bert(input_ids_2, attention_mask_2)
+        # outputs_1 = self.bert(input_ids_1, attention_mask_1)
+        # outputs_2 = self.bert(input_ids_2, attention_mask_2)
 
-        # get the last hidden state from the outputs
-        last_hidden_state_1 = outputs_1.last_hidden_state
-        last_hidden_state_2 = outputs_2.last_hidden_state
+        # # get the last hidden state from the outputs
+        # last_hidden_state_1 = outputs_1.last_hidden_state
+        # last_hidden_state_2 = outputs_2.last_hidden_state
 
-        # get the classification embedding from the last hidden state
-        classification_embedding_1 = last_hidden_state_1[:, 0, :]
-        classification_embedding_2 = last_hidden_state_2[:, 0, :]
+        # # get the classification embedding from the last hidden state
+        # classification_embedding_1 = last_hidden_state_1[:, 0, :]
+        # classification_embedding_2 = last_hidden_state_2[:, 0, :]
+
+        class_embedding_1 = self.forward(input_ids_1, attention_mask_1)
+        class_embedding_2 = self.forward(input_ids_2, attention_mask_2)
 
         # concatenate the classification embeddings
-        combined_classification_embedding = torch.cat((classification_embedding_1, classification_embedding_2), dim=1)
+        # combined_classification_embedding = torch.cat((classification_embedding_1, classification_embedding_2), dim=1)
+        combined_class_embedding = torch.cat((class_embedding_1, class_embedding_2), dim=1)
 
         # pass the combined classification embedding through the similarity classifier
-        similarity_logits = self.similarity_classifier(combined_classification_embedding)
+        similarity_logits = self.similarity_classifier(combined_class_embedding)
 
         return similarity_logits
     
@@ -200,7 +211,8 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
