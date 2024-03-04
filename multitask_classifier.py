@@ -335,26 +335,26 @@ def train_multitask(args):
         train_loss_para = train_loss_para / (num_batches_para)
         train_loss_sts = train_loss_sts / (num_batches_sts)
 
-        dev_sst_y_pred, \
-            _, dev_para_y_pred, _, dev_sts_y_pred, _ = \
-                model_eval_test_multitask(sst_dev_dataloader,
-                                          para_dev_dataloader,
-                                          sts_dev_dataloader, model, device)
-        train_sst_y_pred, \
-            _, train_para_y_pred, _, train_sts_y_pred, _ = \
-                model_eval_test_multitask(sst_train_dataloader,
-                                          para_train_dataloader,
-                                          sts_train_dataloader, model, device)
+        dev_sentiment_accuracy,_, _, \
+            dev_paraphrase_accuracy, _, _, \
+            dev_sts_corr, _, _ = model_eval_multitask(sst_dev_dataloader,
+                                                                    para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+        train_sentiment_accuracy,_, _, \
+            train_paraphrase_accuracy, _, _, \
+            train_sts_corr, _, _ = model_eval_multitask(sst_train_dataloader,
+                                                                    para_train_dataloader,
+                                                                    sts_train_dataloader, model, device)
         
-        mean_dev = (dev_sst_y_pred + dev_para_y_pred + dev_sts_y_pred)/3
+        mean_dev = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr)/3
         
         if mean_dev > best_dev_acc:
             best_dev_acc = mean_dev
             save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch} (sst): train loss :: {train_loss_sst :.3f}, train acc :: {train_sst_y_pred :.3f}, dev acc :: {dev_sst_y_pred :.3f}") 
-        print(f"Epoch {epoch} (para): train loss :: {train_loss_para :.3f}, train acc :: {train_para_y_pred :.3f}, dev acc :: {dev_para_y_pred :.3f}")
-        print(f"Epoch {epoch} (sts): train loss :: {train_loss_sts :.3f}, train acc :: {train_sts_y_pred :.3f}, dev acc :: {dev_sts_y_pred :.3f}")
+        print(f"Epoch {epoch} (sst): train loss :: {train_loss_sst :.3f}, train acc :: {train_sentiment_accuracy :.3f}, dev acc :: {dev_sentiment_accuracy :.3f}") 
+        print(f"Epoch {epoch} (para): train loss :: {train_loss_para :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
+        print(f"Epoch {epoch} (sts): train loss :: {train_loss_sts :.3f}, train acc :: {train_sts_corr :.3f}, dev acc :: {dev_sts_corr :.3f}")
 
 
 def test_multitask(args):
