@@ -92,7 +92,7 @@ class MultitaskBERT(nn.Module):
         # (e.g., by adding other layers).
         
         # encode the input_ids and attention_mask using the BERT model
-        outputs = self.bert(input_ids, attention_mask)
+        output_bert = self.bert(input_ids, attention_mask)
 
         # get the last hidden state from the outputs
         # last_hidden_state = outputs.last_hidden_state
@@ -100,9 +100,11 @@ class MultitaskBERT(nn.Module):
         # get the classification embedding from the last hidden state
         # classification_embedding = last_hidden_state[:, 0, :]
 
-        classification_embedding = outputs['pooler_output']
+        # get the pooled output from the BERT model
+        # classification embedding
+        output_pooled = output_bert['pooler_output']
 
-        return classification_embedding
+        return output_pooled
 
     def predict_sentiment(self, input_ids, attention_mask):
         '''Given a batch of sentences, outputs logits for classifying sentiment.
@@ -113,7 +115,7 @@ class MultitaskBERT(nn.Module):
         
         # encode the input_ids and attention_mask using the BERT model
         # outputs = self.bert(input_ids, attention_mask)
-        classification_embeddings = self.forward(input_ids, attention_mask)
+        classification_embeds = self.forward(input_ids, attention_mask)
 
         # get the last hidden state from the outputs
         # last_hidden_state = outputs.last_hidden_state
@@ -121,10 +123,10 @@ class MultitaskBERT(nn.Module):
         # get the classification embedding from the last hidden state
         # classification_embedding = last_hidden_state[:, 0, :]
 
-        classification_embeddings = self.dropout_sentiment(classification_embeddings)
+        classification_embeds = self.dropout_sentiment(classification_embeds)
 
         # pass the classification embedding through the sentiment classifier
-        sentiment_logits = self.sentiment_classifier(classification_embeddings)
+        sentiment_logits = self.sentiment_classifier(classification_embeds)
 
         return sentiment_logits
         
