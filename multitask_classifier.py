@@ -23,6 +23,8 @@ from torch.utils.data import DataLoader
 from bert import BertModel
 from optimizer import AdamW
 from tqdm import tqdm
+import subprocess
+
 
 from datasets import (
     SentenceClassificationDataset,
@@ -283,6 +285,9 @@ def sts_train_step(model, batch, optimizer, device, batch_size):
 
     return loss.item()
 
+
+# TODO: train function for each task
+
 def train_multitask(args):
     '''Train MultitaskBERT.
 
@@ -348,23 +353,23 @@ def train_multitask(args):
         sst_num_batches, para_num_batches, sts_num_batches = 0, 0, 0
         
         # SST dataset Training
-        model.zero_grad()
+        # model.zero_grad()
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             specific_loss = sst_train_step(model, batch, optimizer, device, args.batch_size)
-            sts_train_loss += specific_loss
+            sst_train_loss += specific_loss
             sst_num_batches += 1
             # print(f'Batch {sst_num_batches}/{len(sst_train_dataloader)} of SST - loss: {specific_loss}')
 
         # Paraphrase dataset Training
-        model.zero_grad()
+        # model.zero_grad()
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             specific_loss = para_train_step(model, batch, optimizer, device, args.batch_size)
-            sts_train_loss += specific_loss
+            para_train_loss += specific_loss
             para_num_batches += 1
             # print(f'Batch {para_num_batches}/{len(para_train_dataloader)} of Para - loss: {specific_loss}')
 
         # STS dataset Training
-        model.zero_grad()
+        # model.zero_grad()
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             specific_loss = sts_train_step(model, batch, optimizer, device, args.batch_size)
             sts_train_loss += specific_loss
@@ -531,9 +536,39 @@ def get_args():
     return args
 
 
+
+# Replace these values with your GCP project ID, zone, and instance name
+project_id = "cs224n-413422"
+zone = "us-west4-b"
+instance_name = "cs224n-deeplearning1-vm"
+
+def record_error(err):
+    with open('error_log.txt', 'a') as file:
+        file.write(f"{err}\n")
+
+GPU= True
+def stop_vm(project_id, zone, instance_name):
+    if GPU:
+        cmd = f"gcloud compute instances stop {instance_name} --project {project_id} --zone {zone}"
+        try:
+            subprocess.run(cmd, shell=True, check=True)
+            print(f"VM instance {instance_name} stopped successfully.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error occurred: {e}")
+
 if __name__ == "__main__":
-    args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
-    seed_everything(args.seed)  # Fix the seed for reproducibility.
-    train_multitask(args)
-    test_multitask(args)
+    try:
+        args = get_args()
+        args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
+        seed_everything(args.seed)  # Fix the seed for reproducibility.
+        train_multitask(args)
+        test_multitask(args)
+    except Exception as e:
+        print(f"An error occurred during fetching: {e}")
+        record_error(e)
+        stop_vm(project_id, zone, instance_name)
+
+    # stop the VM
+    stop_vm(project_id, zone, instance_name)
+
+    
