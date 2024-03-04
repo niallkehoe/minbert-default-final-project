@@ -272,7 +272,6 @@ def train_multitask(args):
         model.train()
         train_loss_sst, train_loss_para, train_loss_sts = 0,0,0
         num_batches_sst, num_batches_para, num_batches_sts = 0,0,0
-            
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
                                        batch['attention_mask'], batch['labels'])
@@ -290,7 +289,6 @@ def train_multitask(args):
 
             train_loss_sst += loss.item()
             num_batches_sst += 1
-
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
                                                               batch['attention_mask_1'],
@@ -312,7 +310,6 @@ def train_multitask(args):
 
             train_loss_para += loss.item()
             num_batches_para += 1
-        
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
                                                               batch['attention_mask_1'],
@@ -324,17 +321,15 @@ def train_multitask(args):
             b_ids_2 = b_ids_2.to(device)
             b_mask_2 = b_mask_2.to(device)
             b_labels = b_labels.to(device)
-
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+            loss = F.mse_loss(logits.view(-1).float(), b_labels.view(-1).float(), reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
 
             train_loss_sts += loss.item()
             num_batches_sts += 1
-        
 
         train_loss_sst = train_loss_sst / (num_batches_sst)
         train_loss_para = train_loss_para / (num_batches_para)
