@@ -37,7 +37,7 @@ from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_mul
 
 TQDM_DISABLE=False
 
-
+torch.cuda.empty_cache()
 # Fix the random seed.
 def seed_everything(seed=11711):
     random.seed(seed)
@@ -289,6 +289,7 @@ def train_multitask(args):
 
             train_loss_sst += loss.item()
             num_batches_sst += 1
+        torch.cuda.empty_cache()
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
                                                               batch['attention_mask_1'],
@@ -310,6 +311,7 @@ def train_multitask(args):
 
             train_loss_para += loss.item()
             num_batches_para += 1
+        torch.cuda.empty_cache()
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
                                                               batch['attention_mask_1'],
