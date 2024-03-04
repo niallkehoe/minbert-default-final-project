@@ -217,6 +217,72 @@ def save_model(model, optimizer, args, config, filepath):
     print(f"save the model to {filepath}")
 
 
+def sst_train_step(model, batch, optimizer, device, batch_size):
+    '''Train the model on a single batch of SST data.'''
+    model.train()
+    b_ids, b_mask, b_labels = (batch['token_ids'],
+                               batch['attention_mask'], batch['labels'])
+
+    b_ids = b_ids.to(device)
+    b_mask = b_mask.to(device)
+    b_labels = b_labels.to(device)
+
+    optimizer.zero_grad()
+    logits = model.predict_sentiment(b_ids, b_mask)
+    loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / batch_size
+
+    loss.backward()
+    optimizer.step()
+
+    return loss.item()
+
+def para_train_step(model, batch, optimizer, device, batch_size):
+    b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
+                                                batch['attention_mask_1'],
+                                                batch['token_ids_2'],
+                                                batch['attention_mask_2'],
+                                                batch['labels'])
+
+    b_ids_1 = b_ids_1.to(device)
+    b_mask_1 = b_mask_1.to(device)
+    b_ids_2 = b_ids_2.to(device)
+    b_mask_2 = b_mask_2.to(device)
+    b_labels = b_labels.to(device)
+
+    optimizer.zero_grad()
+    logits = model.predict_paraphrase(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+    # binary cross entropy loss as the paraphrase detection is a binary classification task 
+    # loss = F.binary_cross_entropy_with_logits(logits, b_labels.view(-1), reduction='sum') / batch_size
+    loss = F.binary_cross_entropy_with_logits(logits.view(-1), b_labels.float(), reduction='sum') / batch_size
+
+    loss.backward()
+    optimizer.step()
+
+    return loss.item()
+
+def sts_train_step(model, batch, optimizer, device, batch_size):
+    b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
+                                                batch['attention_mask_1'],
+                                                batch['token_ids_2'],
+                                                batch['attention_mask_2'],
+                                                batch['labels'])
+
+    b_ids_1 = b_ids_1.to(device)
+    b_mask_1 = b_mask_1.to(device)
+    b_ids_2 = b_ids_2.to(device)
+    b_mask_2 = b_mask_2.to(device)
+    b_labels = b_labels.to(device)
+
+    optimizer.zero_grad()
+    logits = model.predict_similarity(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+    # binary cross entropy loss as the paraphrase detection is a binary classification task 
+    loss = F.mse_loss(logits.view(-1), b_labels.float(), reduction='sum') / batch_size
+
+    loss.backward()
+    optimizer.step()
+
+    return loss.item()
+
 def train_multitask(args):
     '''Train MultitaskBERT.
 
@@ -228,9 +294,10 @@ def train_multitask(args):
     # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
     device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
     # Create the data and its corresponding datasets and dataloader.
-    sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
-    sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
+    sst_train_data, num_labels, para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
+    sst_dev_data, num_labels, para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
 
+    # SST dataset: Sentiment Classification
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
@@ -238,6 +305,25 @@ def train_multitask(args):
                                       collate_fn=sst_train_data.collate_fn)
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
+    
+    # Para dataset: Paraphrase Detection
+    para_train_data = SentencePairDataset(para_train_data, args)
+    para_dev_data = SentencePairDataset(para_dev_data, args)
+
+    para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
+                                        collate_fn=para_train_data.collate_fn)
+    para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
+                                        collate_fn=para_dev_data.collate_fn)
+    
+    # STS dataset: Semantic Textual Similarity
+    sts_train_data = SentencePairDataset(sts_train_data, args, isRegression=True)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
+
+    sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
+                                        collate_fn=sts_train_data.collate_fn)
+    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
+                                        collate_fn=sts_dev_data.collate_fn)
+    
 
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
@@ -258,36 +344,65 @@ def train_multitask(args):
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
-        train_loss = 0
-        num_batches = 0
+        sst_train_loss, para_train_loss, sts_train_loss = 0, 0, 0
+        sst_num_batches, para_num_batches, sts_num_batches = 0, 0, 0
+        
+        # SST dataset Training
+        model.zero_grad()
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            b_ids, b_mask, b_labels = (batch['token_ids'],
-                                       batch['attention_mask'], batch['labels'])
+            specific_loss = sst_train_step(model, batch, optimizer, device, args.batch_size)
+            sts_train_loss += specific_loss
+            sst_num_batches += 1
+            # print(f'Batch {sst_num_batches}/{len(sst_train_dataloader)} of SST - loss: {specific_loss}')
 
-            b_ids = b_ids.to(device)
-            b_mask = b_mask.to(device)
-            b_labels = b_labels.to(device)
+        # Paraphrase dataset Training
+        model.zero_grad()
+        for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+            specific_loss = para_train_step(model, batch, optimizer, device, args.batch_size)
+            sts_train_loss += specific_loss
+            para_num_batches += 1
+            # print(f'Batch {para_num_batches}/{len(para_train_dataloader)} of Para - loss: {specific_loss}')
 
-            optimizer.zero_grad()
-            logits = model.predict_sentiment(b_ids, b_mask)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+        # STS dataset Training
+        model.zero_grad()
+        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+            specific_loss = sts_train_step(model, batch, optimizer, device, args.batch_size)
+            sts_train_loss += specific_loss
+            sts_num_batches += 1
+            # print(f'Batch {sts_num_batches}/{len(sts_train_dataloader)} of STS - loss: {specific_loss}')
 
-            loss.backward()
-            optimizer.step()
+        # Training loss
+        sst_train_loss = sst_train_loss / (sst_num_batches)
+        para_train_loss = para_train_loss / (para_num_batches)
+        sts_train_loss = sts_train_loss / (sts_num_batches)
 
-            train_loss += loss.item()
-            num_batches += 1
+        # Evaluate model on the dev set.
+        # using the evaluation function from evaluation.py
+        (sentiment_accuracy,sst_y_pred, sst_sent_ids,
+                paraphrase_accuracy, para_y_pred, para_sent_ids,
+                sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device)
 
-        train_loss = train_loss / (num_batches)
+        # average dev accuracy 
+        # TODO: probably not the best way, improve this metric
+        avg_dev_acc = (sentiment_accuracy + paraphrase_accuracy + sts_corr) / 3
 
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
+        # train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
+        # dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
 
-        if dev_acc > best_dev_acc:
-            best_dev_acc = dev_acc
+        # if dev_acc > best_dev_acc:
+        #     best_dev_acc = dev_acc
+        #     save_model(model, optimizer, args, config, args.filepath)
+
+        if avg_dev_acc > best_dev_acc:
+            best_dev_acc = avg_dev_acc
             save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
+        print(f"Epoch {epoch}: train loss SST:: {sst_train_loss :.3f}, train loss Para:: {para_train_loss :.3f}, train loss STS:: {sts_train_loss :.3f}")
+        print(f"Epoch {epoch}: dev acc SST:: {sentiment_accuracy :.3f}, dev acc Para:: {paraphrase_accuracy :.3f}, dev acc STS:: {sts_corr :.3f}")
+        print(f"Epoch {epoch}: avg dev acc :: {avg_dev_acc :.3f}, best dev acc :: {best_dev_acc :.3f}")
+        print("-----------------")
+        # print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
 
 
 def test_multitask(args):
