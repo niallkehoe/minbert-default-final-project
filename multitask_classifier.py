@@ -34,6 +34,7 @@ from datasets import (
 
 from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask
 
+from tokenizer import BertTokenizer
 
 TQDM_DISABLE=False
 
@@ -76,13 +77,18 @@ class MultitaskBERT(nn.Module):
         self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
 
         # Paraphrase detection layer
-        self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        # self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*1, 1)
 
         # Semantic Textual Similarity layer
-        self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*1, 1)
         
         # Dropout layer
         self.dropout_sentiment = nn.Dropout(config.hidden_dropout_prob)
+
+        # Tokenizer
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -127,6 +133,37 @@ class MultitaskBERT(nn.Module):
         sentiment_logits = self.sentiment_classifier(classification_embeddings)
 
         return sentiment_logits
+    
+    def combine_sentences(self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2):
+        '''
+        Combines a pair of sentences into a single embedding.
+        '''
+        
+        # Get the token ID for the [SEP] token
+        SEP_TOKEN_ID = self.tokenizer.sep_token_id
+
+        # Create a tensor for the [SEP] token ID
+        sep_token_id = torch.tensor([SEP_TOKEN_ID], dtype=torch.long, device=input_ids_1.device)
+
+        # Repeat the [SEP] token ID to match the batch size of the input sentences
+        repeated_sep_tokens = sep_token_id.repeat(input_ids_1.shape[0], 1)
+
+        # Combine the input sentences with separator tokens in between
+        # sentance1 [SEP] sentance2 [SEP]
+        # Concatenate token IDs of the first sentence, separator tokens, token IDs of the second sentence, and separator tokens
+        input_id = torch.cat((input_ids_1, repeated_sep_tokens, input_ids_2, repeated_sep_tokens), dim=1)
+
+        # Create a tensor of ones the same size as the repeated_sep_tokens tensor for the SEP attention mask
+        sep_attention_mask = torch.ones_like(repeated_sep_tokens)
+
+        # create a global attention mask
+        global_attention_mask = torch.cat( 
+            (attention_mask_1, sep_attention_mask, attention_mask_2, sep_attention_mask)
+            , dim=1)
+        
+        return input_id, global_attention_mask
+        
+
         
     def predict_paraphrase(self,
                            input_ids_1, attention_mask_1,
@@ -135,34 +172,33 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         '''
-        
+
+        input_id, global_attention_mask = self.combine_sentences(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
+
         # encode the input_ids and attention_mask using the BERT model
-        # outputs_1 = self.bert(input_ids_1, attention_mask_1)
-        # outputs_2 = self.bert(input_ids_2, attention_mask_2)
-        class_embed_1 = self.forward(input_ids_1, attention_mask_1)
-        class_embed_2 = self.forward(input_ids_2, attention_mask_2)
-
-        # get the last hidden state from the outputs
-        # last_hidden_state_1 = outputs_1.last_hidden_state
-        # last_hidden_state_2 = outputs_2.last_hidden_state
-
-        # get the classification embedding from the last hidden state
-        # cls_embedding_1 = last_hidden_state_1[:, 0, :]
-        # cls_embedding_2 = last_hidden_state_2[:, 0, :]
-
-        # concatenate the classification embeddings
-        # combined_cls_embedding = torch.cat((cls_embedding_1, cls_embedding_2), dim=1)
-
-        # dropout the classification embeddings
-        class_embed_1 = self.dropout_sentiment(class_embed_1)
-        class_embed_2 = self.dropout_sentiment(class_embed_2)
-
-        combined_cls_embedding = torch.cat((class_embed_1, class_embed_2), dim=1)
+        class_embed = self.forward(input_id, global_attention_mask)
 
         # pass the combined classification embedding through the paraphrase classifier
-        paraphrase_logits = self.paraphrase_classifier(combined_cls_embedding)
+        paraphrase_logits = self.paraphrase_classifier(class_embed)
+        # TODO: add more hidden layers here
 
         return paraphrase_logits
+
+        
+        # encode the input_ids and attention_mask using the BERT model
+        # class_embed_1 = self.forward(input_ids_1, attention_mask_1)
+        # class_embed_2 = self.forward(input_ids_2, attention_mask_2)
+
+        # # dropout the classification embeddings
+        # class_embed_1 = self.dropout_sentiment(class_embed_1)
+        # class_embed_2 = self.dropout_sentiment(class_embed_2)
+
+        # combined_cls_embedding = torch.cat((class_embed_1, class_embed_2), dim=1)
+
+        # # pass the combined classification embedding through the paraphrase classifier
+        # paraphrase_logits = self.paraphrase_classifier(combined_cls_embedding)
+
+        # return paraphrase_logits
 
     def predict_similarity(self,
                            input_ids_1, attention_mask_1,
@@ -170,34 +206,33 @@ class MultitaskBERT(nn.Module):
         '''Given a batch of pairs of sentences, outputs a single logit corresponding to how similar they are.
         Note that your output should be unnormalized (a logit).
         '''
-        
+
+        input_id, global_attention_mask = self.combine_sentences(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
+
         # encode the input_ids and attention_mask using the BERT model
-        # outputs_1 = self.bert(input_ids_1, attention_mask_1)
-        # outputs_2 = self.bert(input_ids_2, attention_mask_2)
+        class_embed = self.forward(input_id, global_attention_mask)
 
-        # # get the last hidden state from the outputs
-        # last_hidden_state_1 = outputs_1.last_hidden_state
-        # last_hidden_state_2 = outputs_2.last_hidden_state
+        # pass the combined classification embedding through the paraphrase classifier
+        paraphrase_logits = self.similarity_classifier(class_embed)
+        # TODO: add more hidden layers here
 
-        # # get the classification embedding from the last hidden state
-        # classification_embedding_1 = last_hidden_state_1[:, 0, :]
-        # classification_embedding_2 = last_hidden_state_2[:, 0, :]
+        return paraphrase_logits
 
-        class_embedding_1 = self.forward(input_ids_1, attention_mask_1)
-        class_embedding_2 = self.forward(input_ids_2, attention_mask_2)
 
-        # dropout the classification embeddings
-        class_embedding_1 = self.dropout_sentiment(class_embedding_1)
-        class_embedding_2 = self.dropout_sentiment(class_embedding_2)
+        # class_embedding_1 = self.forward(input_ids_1, attention_mask_1)
+        # class_embedding_2 = self.forward(input_ids_2, attention_mask_2)
 
-        # concatenate the classification embeddings
-        # combined_classification_embedding = torch.cat((classification_embedding_1, classification_embedding_2), dim=1)
-        combined_class_embedding = torch.cat((class_embedding_1, class_embedding_2), dim=1)
+        # # dropout the classification embeddings
+        # class_embedding_1 = self.dropout_sentiment(class_embedding_1)
+        # class_embedding_2 = self.dropout_sentiment(class_embedding_2)
 
-        # pass the combined classification embedding through the similarity classifier
-        similarity_logits = self.similarity_classifier(combined_class_embedding)
+        # # concatenate the classification embeddings
+        # combined_class_embedding = torch.cat((class_embedding_1, class_embedding_2), dim=1)
 
-        return similarity_logits
+        # # pass the combined classification embedding through the similarity classifier
+        # similarity_logits = self.similarity_classifier(combined_class_embedding)
+
+        # return similarity_logits
     
 
 def save_model(model, optimizer, args, config, filepath):
@@ -289,6 +324,7 @@ def train_multitask(args):
 
             train_loss_sst += loss.item()
             num_batches_sst += 1
+
         torch.cuda.empty_cache()
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
@@ -311,6 +347,7 @@ def train_multitask(args):
 
             train_loss_para += loss.item()
             num_batches_para += 1
+
         torch.cuda.empty_cache()
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
