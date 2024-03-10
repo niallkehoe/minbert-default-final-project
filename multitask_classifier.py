@@ -90,6 +90,25 @@ class MultitaskBERT(nn.Module):
         # Tokenizer
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
+        # Finetuning hot starting
+        if config.option == 'finetune':
+            self.read_pretrained()
+
+    def read_pretrained(self):
+        filepath = f'pretraining_weights.pt'
+
+        if torch.cuda.is_available():
+            pretrain_weights = torch.load(filepath)
+        else:
+            pretrain_weights = torch.load(filepath, map_location=torch.device('cpu'))  # Load model on CPU
+
+        sst_weights, para_weights, sts_weights = pretrain_weights['sst'], pretrain_weights['para'], pretrain_weights['sts']
+
+        # Load the pretrain weights
+        self.sentiment_classifier.load_state_dict(sst_weights)
+        self.paraphrase_classifier.load_state_dict(para_weights)
+        self.similarity_classifier.load_state_dict(sts_weights)
+
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
         # The final BERT embedding is the hidden state of [CLS] token (the first token)
@@ -236,18 +255,39 @@ class MultitaskBERT(nn.Module):
     
 
 def save_model(model, optimizer, args, config, filepath):
-    save_info = {
-        'model': model.state_dict(),
-        'optim': optimizer.state_dict(),
-        'args': args,
-        'model_config': config,
-        'system_rng': random.getstate(),
-        'numpy_rng': np.random.get_state(),
-        'torch_rng': torch.random.get_rng_state(),
-    }
+    if config.option == 'pretrain':
+        # save the head weights
+        save_info = {
+            'optim': optimizer.state_dict(),
+            'args': args,
+            'model_config': config,
+            'system_rng': random.getstate(),
+            'numpy_rng': np.random.get_state(),
+            'torch_rng': torch.random.get_rng_state(),
+            'sst': model.sentiment_classifier.state_dict(),
+            'para': model.paraphrase_classifier.state_dict(),
+            'sts': model.similarity_classifier.state_dict()
+        }
 
-    torch.save(save_info, filepath)
-    print(f"save the model to {filepath}")
+        torch.save(save_info, filepath)
+        print(f"save the model to {filepath}")
+    else:
+        save_info = {
+            'model': model.state_dict(),
+            'optim': optimizer.state_dict(),
+            'args': args,
+            'model_config': config,
+            'system_rng': random.getstate(),
+            'numpy_rng': np.random.get_state(),
+            'torch_rng': torch.random.get_rng_state(),
+            # HEADS
+            'sst': model.sentiment_classifier.state_dict(),
+            'para': model.paraphrase_classifier.state_dict(),
+            'sts': model.similarity_classifier.state_dict()
+        }
+
+        torch.save(save_info, filepath)
+        print(f"save the model to {filepath}")
 
 
 def train_multitask(args):
