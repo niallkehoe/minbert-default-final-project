@@ -291,11 +291,13 @@ def train_multitask(args):
         for i in tqdm(range(num_batches), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
             for task in ["sst", "para", "sts"]:
+                print("hello")
                 loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
                 torch.cuda.empty_cache()
+            print("here")
             optimizer.pc_backward(losses)
             optimizer.step()
             optimizer.zero_grad()
