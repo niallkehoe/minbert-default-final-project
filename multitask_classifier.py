@@ -24,6 +24,7 @@ from bert import BertModel
 from optimizer import AdamW
 from tqdm import tqdm
 from pcgrad import PCGrad
+from gradvac_amp import GradVacAMP
 
 from datasets import (
     SentenceClassificationDataset,
@@ -159,7 +160,6 @@ class MultitaskBERT(nn.Module):
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
-        'optim': optimizer.state_dict(),
         'args': args,
         'model_config': config,
         'system_rng': random.getstate(),
@@ -282,22 +282,25 @@ def train_multitask(args):
     sts_iteration = iter(sts_train_dataloader)
     iterators = {"sst": sst_iteration, "para": para_iteration, "sts": sts_iteration}
     iterator_dataloaders = {"sst": sst_train_dataloader, "para": para_train_dataloader, "sts": sts_train_dataloader}
-    optimizer = PCGrad(optimizer)
+    accumulation_steps = args.accum_steps
+    #optimizer = PCGrad(optimizer)
+    scaler = torch.cuda.amp.GradScaler()
+    optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
     for epoch in range(args.epochs):
         model.train()
         iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
         iterator_batch_losses = {"sst": 0, "para": 0, "sts": 0}
-
         for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
-            optimizer.zero_grad()
             for task in ["sst", "para", "sts"]:
                 loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
-            optimizer.pc_backward(losses)
-            optimizer.step()
+                optimizer.backward(losses)
+            if (i + 1) % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
             torch.cuda.empty_cache()
 
         dev_sentiment_accuracy,_, _, \
@@ -438,7 +441,7 @@ def get_args():
     parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
-
+    parser.add_argument("--accum_steps", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
     args = parser.parse_args()
     return args
 
