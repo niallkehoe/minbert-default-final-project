@@ -235,6 +235,7 @@ def train_multitask(args):
     '''
     # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
     device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
+    print(device)
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
@@ -291,12 +292,10 @@ def train_multitask(args):
         for i in tqdm(range(num_batches), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
             for task in ["sst", "para", "sts"]:
-                print("hello")
                 loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
-            print("here")
             optimizer.pc_backward(losses)
             optimizer.step()
             optimizer.zero_grad()
