@@ -282,7 +282,7 @@ def train_multitask(args):
     iterators = {"sst": sst_iteration, "para": para_iteration, "sts": sts_iteration}
     iterator_dataloaders = {"sst": sst_train_dataloader, "para": para_train_dataloader, "sts": sts_train_dataloader}
     optimizer = PCGrad(optimizer)
-    num_batches = len(para_dev_dataloader)
+    num_batches = len(para_train_data)//args.batch_size
     for epoch in range(args.epochs):
         model.train()
         iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
