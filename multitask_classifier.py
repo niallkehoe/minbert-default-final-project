@@ -285,6 +285,7 @@ def train_multitask(args):
     accumulation_steps = args.accum_steps//args.batch_size
     pc_optimizer = PCGrad(optimizer)
     scaler = torch.cuda.amp.GradScaler()
+    print(args.use_vac)
     grad_vac_optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
     for epoch in range(args.epochs):
         model.train()
