@@ -296,11 +296,11 @@ def train_multitask(args):
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
-            torch.cuda.empty_cache()
             print("here")
             optimizer.pc_backward(losses)
             optimizer.step()
             optimizer.zero_grad()
+            torch.cuda.empty_cache()
 
         dev_sentiment_accuracy,_, _, \
             dev_paraphrase_accuracy, _, _, \
