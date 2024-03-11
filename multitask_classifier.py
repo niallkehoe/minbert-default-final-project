@@ -353,6 +353,7 @@ def train_multitask(args):
         for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
             for task in ["sst", "para", "sts"]:
+            # for task in ["sts"]:
                 loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
@@ -377,7 +378,8 @@ def train_multitask(args):
                                                                     sts_dev_dataloader, model, device)
         
         for task in ["sst", "para", "sts"]:
-            print(f"Epoch {epoch} {task}: train loss :: {iterator_batch_losses[task]/iterator_batch_nums[task] :.3f}")
+            num_tasks = max(iterator_batch_nums[task], 1)
+            print(f"Epoch {epoch} {task}: train loss :: {iterator_batch_losses[task]/ num_tasks:.3f}")
         print(f"Epoch {epoch} (sst): dev acc :: {dev_sentiment_accuracy :.3f}") 
         print(f"Epoch {epoch} (para): dev acc :: {dev_paraphrase_accuracy :.3f}")
         print(f"Epoch {epoch} (sts): dev acc :: {dev_sts_corr :.3f}")
