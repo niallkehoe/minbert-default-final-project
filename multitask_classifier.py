@@ -157,7 +157,7 @@ class MultitaskBERT(nn.Module):
         return similarity_logits
     
 
-def save_model(model, optimizer, args, config, filepath):
+def save_model(model, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
         'args': args,
@@ -282,7 +282,7 @@ def train_multitask(args):
     sts_iteration = iter(sts_train_dataloader)
     iterators = {"sst": sst_iteration, "para": para_iteration, "sts": sts_iteration}
     iterator_dataloaders = {"sst": sst_train_dataloader, "para": para_train_dataloader, "sts": sts_train_dataloader}
-    accumulation_steps = args.accum_steps
+    accumulation_steps = args.accum_steps//args.batch_size
     #optimizer = PCGrad(optimizer)
     scaler = torch.cuda.amp.GradScaler()
     optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
