@@ -283,14 +283,14 @@ def train_multitask(args):
     iterators = {"sst": sst_iteration, "para": para_iteration, "sts": sts_iteration}
     iterator_dataloaders = {"sst": sst_train_dataloader, "para": para_train_dataloader, "sts": sts_train_dataloader}
     optimizer = PCGrad(optimizer)
-    num_batches = len(para_train_data)//args.batch_size
     for epoch in range(args.epochs):
         model.train()
         iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
         iterator_batch_losses = {"sst": 0, "para": 0, "sts": 0}
 
-        for i in tqdm(range(num_batches), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
+        for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
+            optimizer.zero_grad()
             for task in ["sst", "para", "sts"]:
                 loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
                 iterator_batch_nums[task] += 1
@@ -298,7 +298,6 @@ def train_multitask(args):
                 iterator_batch_losses[task] += loss_task.item()
             optimizer.pc_backward(losses)
             optimizer.step()
-            optimizer.zero_grad()
             torch.cuda.empty_cache()
 
         dev_sentiment_accuracy,_, _, \
@@ -316,7 +315,7 @@ def train_multitask(args):
         
         if mean_dev > best_dev_acc:
             best_dev_acc = mean_dev
-            save_model(model, optimizer, args, config, args.filepath)
+            save_model(model, args, config, args.filepath)
     
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''

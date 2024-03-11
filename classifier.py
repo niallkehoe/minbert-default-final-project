@@ -220,10 +220,9 @@ def model_test_eval(dataloader, model, device):
     return y_pred, sents, sent_ids
 
 
-def save_model(model, optimizer, args, config, filepath):
+def save_model(model, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
-        'optim': optimizer.state_dict(),
         'args': args,
         'model_config': config,
         'system_rng': random.getstate(),
