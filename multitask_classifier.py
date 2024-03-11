@@ -77,37 +77,37 @@ class MultitaskBERT(nn.Module):
         self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
 
         # Paraphrase detection layer
-        # self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
-        self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*1, 1)
+        self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        # self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*1, 1)
 
         # Semantic Textual Similarity layer
-        # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
-        self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*1, 1)
+        self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*1, 1)
         
         # Dropout layer
         self.dropout_sentiment = nn.Dropout(config.hidden_dropout_prob)
 
         # Tokenizer
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        # self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
         # Finetuning hot starting
-        if config.option == 'finetune':
-            self.read_pretrained()
+        # if config.option == 'finetune':
+        #     self.read_pretrained()
 
-    def read_pretrained(self):
-        filepath = f'pretraining_weights.pt'
+    # def read_pretrained(self):
+    #     filepath = 'weights/pretrain-multitask.pt'
 
-        if torch.cuda.is_available():
-            pretrain_weights = torch.load(filepath)
-        else:
-            pretrain_weights = torch.load(filepath, map_location=torch.device('cpu'))  # Load model on CPU
+    #     if torch.cuda.is_available():
+    #         pretrain_weights = torch.load(filepath)
+    #     else:
+    #         pretrain_weights = torch.load(filepath, map_location=torch.device('cpu'))  # Load model on CPU
 
-        sst_weights, para_weights, sts_weights = pretrain_weights['sst'], pretrain_weights['para'], pretrain_weights['sts']
+    #     sst_weights, para_weights, sts_weights = pretrain_weights['sst'], pretrain_weights['para'], pretrain_weights['sts']
 
-        # Load the pretrain weights
-        self.sentiment_classifier.load_state_dict(sst_weights)
-        self.paraphrase_classifier.load_state_dict(para_weights)
-        self.similarity_classifier.load_state_dict(sts_weights)
+    #     # Load the pretrain weights
+    #     self.sentiment_classifier.load_state_dict(sst_weights)
+    #     self.paraphrase_classifier.load_state_dict(para_weights)
+    #     self.similarity_classifier.load_state_dict(sts_weights)
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -192,32 +192,32 @@ class MultitaskBERT(nn.Module):
         during evaluation.
         '''
 
-        input_id, global_attention_mask = self.combine_sentences(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
+        # input_id, global_attention_mask = self.combine_sentences(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
 
-        # encode the input_ids and attention_mask using the BERT model
-        class_embed = self.forward(input_id, global_attention_mask)
-
-        # pass the combined classification embedding through the paraphrase classifier
-        paraphrase_logits = self.paraphrase_classifier(class_embed)
-        # TODO: add more hidden layers here
-
-        return paraphrase_logits
-
-        
-        # encode the input_ids and attention_mask using the BERT model
-        # class_embed_1 = self.forward(input_ids_1, attention_mask_1)
-        # class_embed_2 = self.forward(input_ids_2, attention_mask_2)
-
-        # # dropout the classification embeddings
-        # class_embed_1 = self.dropout_sentiment(class_embed_1)
-        # class_embed_2 = self.dropout_sentiment(class_embed_2)
-
-        # combined_cls_embedding = torch.cat((class_embed_1, class_embed_2), dim=1)
+        # # encode the input_ids and attention_mask using the BERT model
+        # class_embed = self.forward(input_id, global_attention_mask)
 
         # # pass the combined classification embedding through the paraphrase classifier
-        # paraphrase_logits = self.paraphrase_classifier(combined_cls_embedding)
+        # paraphrase_logits = self.paraphrase_classifier(class_embed)
+        # # TODO: add more hidden layers here
 
         # return paraphrase_logits
+
+        # OLD
+        # encode the input_ids and attention_mask using the BERT model
+        class_embed_1 = self.forward(input_ids_1, attention_mask_1)
+        class_embed_2 = self.forward(input_ids_2, attention_mask_2)
+
+        # dropout the classification embeddings
+        class_embed_1 = self.dropout_sentiment(class_embed_1)
+        class_embed_2 = self.dropout_sentiment(class_embed_2)
+
+        combined_cls_embedding = torch.cat((class_embed_1, class_embed_2), dim=1)
+
+        # pass the combined classification embedding through the paraphrase classifier
+        paraphrase_logits = self.paraphrase_classifier(combined_cls_embedding)
+
+        return paraphrase_logits
 
     def predict_similarity(self,
                            input_ids_1, attention_mask_1,
@@ -226,68 +226,66 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit).
         '''
 
-        input_id, global_attention_mask = self.combine_sentences(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
+        # input_id, global_attention_mask = self.combine_sentences(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
 
-        # encode the input_ids and attention_mask using the BERT model
-        class_embed = self.forward(input_id, global_attention_mask)
+        # # encode the input_ids and attention_mask using the BERT model
+        # class_embed = self.forward(input_id, global_attention_mask)
 
-        # pass the combined classification embedding through the paraphrase classifier
-        paraphrase_logits = self.similarity_classifier(class_embed)
-        # TODO: add more hidden layers here
+        # # pass the combined classification embedding through the paraphrase classifier
+        # paraphrase_logits = self.similarity_classifier(class_embed)
+        # # TODO: add more hidden layers here
 
-        return paraphrase_logits
+        # return paraphrase_logits
 
+        # OLD
+        class_embedding_1 = self.forward(input_ids_1, attention_mask_1)
+        class_embedding_2 = self.forward(input_ids_2, attention_mask_2)
 
-        # class_embedding_1 = self.forward(input_ids_1, attention_mask_1)
-        # class_embedding_2 = self.forward(input_ids_2, attention_mask_2)
+        # dropout the classification embeddings
+        class_embedding_1 = self.dropout_sentiment(class_embedding_1)
+        class_embedding_2 = self.dropout_sentiment(class_embedding_2)
 
-        # # dropout the classification embeddings
-        # class_embedding_1 = self.dropout_sentiment(class_embedding_1)
-        # class_embedding_2 = self.dropout_sentiment(class_embedding_2)
+        # concatenate the classification embeddings
+        combined_class_embedding = torch.cat((class_embedding_1, class_embedding_2), dim=1)
 
-        # # concatenate the classification embeddings
-        # combined_class_embedding = torch.cat((class_embedding_1, class_embedding_2), dim=1)
+        # pass the combined classification embedding through the similarity classifier
+        similarity_logits = self.similarity_classifier(combined_class_embedding)
 
-        # # pass the combined classification embedding through the similarity classifier
-        # similarity_logits = self.similarity_classifier(combined_class_embedding)
-
-        # return similarity_logits
+        return similarity_logits
     
 
 def save_model(model, optimizer, args, config, filepath):
-    if config.option == 'pretrain':
-        # save the head weights
-        save_info = {
-            'optim': optimizer.state_dict(),
-            'args': args,
-            'model_config': config,
-            'system_rng': random.getstate(),
-            'numpy_rng': np.random.get_state(),
-            'torch_rng': torch.random.get_rng_state(),
-            'sst': model.sentiment_classifier.state_dict(),
-            'para': model.paraphrase_classifier.state_dict(),
-            'sts': model.similarity_classifier.state_dict()
-        }
+    # filepath = f'weights/{args.option}-multitask.pt'
+    
+    save_info = {
+        'model': model.state_dict(),
+        'optim': optimizer.state_dict(),
+        'args': args,
+        'model_config': config,
+        'system_rng': random.getstate(),
+        'numpy_rng': np.random.get_state(),
+        'torch_rng': torch.random.get_rng_state(),
+    }
 
-        torch.save(save_info, filepath)
-        print(f"save the model to {filepath}")
-    else:
-        save_info = {
-            'model': model.state_dict(),
-            'optim': optimizer.state_dict(),
-            'args': args,
-            'model_config': config,
-            'system_rng': random.getstate(),
-            'numpy_rng': np.random.get_state(),
-            'torch_rng': torch.random.get_rng_state(),
-            # HEADS
-            'sst': model.sentiment_classifier.state_dict(),
-            'para': model.paraphrase_classifier.state_dict(),
-            'sts': model.similarity_classifier.state_dict()
-        }
+    torch.save(save_info, filepath)
+    print(f"save the model to {filepath}")
 
-        torch.save(save_info, filepath)
-        print(f"save the model to {filepath}")
+    # save_info = {
+    #     'model': model.state_dict(),
+    #     'optim': optimizer.state_dict(),
+    #     'args': args,
+    #     'model_config': config,
+    #     'system_rng': random.getstate(),
+    #     'numpy_rng': np.random.get_state(),
+    #     'torch_rng': torch.random.get_rng_state()
+    # },
+    #      # HEADS
+    #     # 'sst': model.sentiment_classifier.state_dict(),
+    #     # 'para': model.paraphrase_classifier.state_dict(),
+    #     # 'sts': model.similarity_classifier.state_dict()
+
+    # torch.save(save_info, filepath)
+    # print(f"save the model to {filepath}")
 
 
 def train_multitask(args):
@@ -334,6 +332,19 @@ def train_multitask(args):
               'option': args.option}
 
     config = SimpleNamespace(**config)
+    
+    # if config.option == 'pretrain':
+    #     print("pretrain config")
+    #     model = MultitaskBERT(config)
+    #     model = model.to(device)
+    # else:
+    #     print("finetune config")
+    #     saved = torch.load("weights/pretrain-multitask.pt")
+    #     # config = saved['model_config']
+
+    #     model = MultitaskBERT(config)
+    #     model.load_state_dict(saved['model'])
+    #     model = model.to(device)
 
     model = MultitaskBERT(config)
     model = model.to(device)
@@ -364,6 +375,7 @@ def train_multitask(args):
 
             train_loss_sst += loss.item()
             num_batches_sst += 1
+            break
 
         torch.cuda.empty_cache()
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
@@ -387,6 +399,7 @@ def train_multitask(args):
 
             train_loss_para += loss.item()
             num_batches_para += 1
+            break
 
         torch.cuda.empty_cache()
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
@@ -409,6 +422,7 @@ def train_multitask(args):
 
             train_loss_sts += loss.item()
             num_batches_sts += 1
+            break
 
         train_loss_sst = train_loss_sst / (num_batches_sst)
         train_loss_para = train_loss_para / (num_batches_para)
@@ -433,13 +447,26 @@ def train_multitask(args):
 
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
+
+    print("test_multitask")
+    # filepath = f'weights/{args.option}-multitask.pt'
+
+    torch.cuda.empty_cache()
+    
     with torch.no_grad():
         device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        print("1")
         saved = torch.load(args.filepath)
+        # print(args.filepath)
+        print("2")
+        # print(saved)
         config = saved['model_config']
+        print("3")
 
         model = MultitaskBERT(config)
+        print("4")
         model.load_state_dict(saved['model'])
+        print("5")
         model = model.to(device)
         print(f"Loaded model to test from {args.filepath}")
 
@@ -560,6 +587,7 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
     args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
+    # args.filepath = f'weights/{args.option}-multitask.pt' # Save path.
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
