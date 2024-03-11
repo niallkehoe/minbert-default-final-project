@@ -283,9 +283,9 @@ def train_multitask(args):
     iterators = {"sst": sst_iteration, "para": para_iteration, "sts": sts_iteration}
     iterator_dataloaders = {"sst": sst_train_dataloader, "para": para_train_dataloader, "sts": sts_train_dataloader}
     accumulation_steps = args.accum_steps//args.batch_size
-    #optimizer = PCGrad(optimizer)
+    pc_optimizer = PCGrad(optimizer)
     scaler = torch.cuda.amp.GradScaler()
-    optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
+    grad_vac_optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
     for epoch in range(args.epochs):
         model.train()
         iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
@@ -297,10 +297,17 @@ def train_multitask(args):
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
-                optimizer.backward(losses)
-            if (i + 1) % accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
+            if args.use_vac:
+                grad_vac_optimizer.backward(losses)
+            else: 
+                pc_optimizer.pc_backward(losses)
+            if args.use_vac:
+                if (i + 1) % accumulation_steps == 0:
+                    grad_vac_optimizer.step()
+                    grad_vac_optimizer.zero_grad()
+            else:
+                pc_optimizer.step()
+                pc_optimizer.zero_grad()
             torch.cuda.empty_cache()
 
         dev_sentiment_accuracy,_, _, \
@@ -442,6 +449,8 @@ def get_args():
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
     parser.add_argument("--accum_steps", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+    parser.add_argument("--use_vac", action='store_true')
+
     args = parser.parse_args()
     return args
 
