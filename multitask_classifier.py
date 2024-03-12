@@ -25,6 +25,7 @@ from optimizer import AdamW
 from tqdm import tqdm
 from pcgrad import PCGrad
 from gradvac_amp import GradVacAMP
+from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
 
 from datasets import (
     SentenceClassificationDataset,
@@ -237,7 +238,7 @@ def get_train_batch(name, iterations, iterator_dataloaders):
         iterations[name] = iter(iterator_dataloaders[name])
         return next(iterations[name])
 
-def process_batch(task, iterators, iterator_dataloaders, batch_size, device, model):
+def process_batch(task, iterators, iterator_dataloaders, batch_size, device, model, weight):
     '''Process a batch accoring to the task'''
     batch = get_train_batch(task, iterators, iterator_dataloaders)
     
@@ -248,9 +249,16 @@ def process_batch(task, iterators, iterator_dataloaders, batch_size, device, mod
         b_ids = b_ids.to(device)
         b_mask = b_mask.to(device)
         b_labels = b_labels.to(device)
-
-        logits = model.predict_sentiment(b_ids, b_mask)
+        outputs = model.bert(b_ids, b_mask)
+        embeddings = outputs['pooler_output']
+        def predict_sentiment_pertrubed(embed):
+            classification_embeddings = model.dropout_sentiment(embed)
+            sentiment_logits = model.sentiment_classifier(classification_embeddings)
+            return sentiment_logits
+        smart_loss_fn = SMARTLoss(eval_fn = predict_sentiment_pertrubed, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
+        logits = predict_sentiment_pertrubed(embeddings)
         loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / batch_size
+        loss +=  weight * smart_loss_fn(embeddings, logits) / batch_size
         return loss
 
     elif task == "para":
@@ -264,8 +272,16 @@ def process_batch(task, iterators, iterator_dataloaders, batch_size, device, mod
         b_ids_2 = b_ids_2.to(device)
         b_mask_2 = b_mask_2.to(device)
         b_labels = b_labels.to(device)
-        logits = model.predict_paraphrase(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+        input_id, global_attention_mask = model.combine_sentences(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+        outputs = model.bert(input_id, global_attention_mask)
+        embeddings = outputs['pooler_output']
+        def predict_para_pertrub(embed):
+            paraphrase_logits = model.paraphrase_classifier(embed)
+            return paraphrase_logits
+        smart_loss_fn = SMARTLoss(eval_fn = predict_para_pertrub, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
+        logits = predict_para_pertrub(embeddings)
         loss = F.binary_cross_entropy_with_logits(logits.view(-1), b_labels.float(), reduction='sum') / args.batch_size
+        loss +=  weight * smart_loss_fn(embeddings, logits) / batch_size
         return loss
     else: 
         b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (batch['token_ids_1'],
@@ -278,8 +294,16 @@ def process_batch(task, iterators, iterator_dataloaders, batch_size, device, mod
         b_ids_2 = b_ids_2.to(device)
         b_mask_2 = b_mask_2.to(device)
         b_labels = b_labels.to(device)
+        input_id, global_attention_mask = model.combine_sentences(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+        outputs = model.bert(input_id, global_attention_mask)
+        embeddings = outputs['pooler_output']
+        def predict_sts_pertrub(embed):
+            similarity_logits = model.similarity_classifier(embed)
+            return similarity_logits
+        smart_loss_fn = SMARTLoss(eval_fn = predict_sts_pertrub, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         logits = model.predict_similarity(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
         loss = F.mse_loss(logits.view(-1).float(), b_labels.view(-1).float(), reduction='sum') / args.batch_size
+        loss +=  weight * smart_loss_fn(embeddings, logits) / batch_size
     return loss
 
 
@@ -345,6 +369,7 @@ def train_multitask(args):
     pc_optimizer = PCGrad(optimizer)
     scaler = torch.cuda.amp.GradScaler()
     print(args.use_vac)
+    weight = args.smart_weight
     grad_vac_optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
     for epoch in range(args.epochs):
         model.train()
@@ -353,7 +378,7 @@ def train_multitask(args):
         for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
             for task in ["sst", "para", "sts"]:
-                loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
+                loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model, weight)
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
@@ -510,6 +535,7 @@ def get_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
     parser.add_argument("--accum_steps", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
     parser.add_argument("--use_vac", action='store_true')
+    parser.add_argument("--smart_weight", type=float, help="weight for smart loss", default=1)
 
     args = parser.parse_args()
     return args
