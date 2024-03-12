@@ -381,7 +381,8 @@ def train_multitask(args):
                                                                     sts_dev_dataloader, model, device)
         
         for task in ["sst", "para", "sts"]:
-            print(f"Epoch {epoch} {task}: train loss :: {iterator_batch_losses[task]/iterator_batch_nums[task] :.3f}")
+            num_tasks = max(iterator_batch_nums[task], 1)
+            print(f"Epoch {epoch} {task}: train loss :: {iterator_batch_losses[task]/ num_tasks:.3f}")
         print(f"Epoch {epoch} (sst): dev acc :: {dev_sentiment_accuracy :.3f}") 
         print(f"Epoch {epoch} (para): dev acc :: {dev_paraphrase_accuracy :.3f}")
         print(f"Epoch {epoch} (sts): dev acc :: {dev_sts_corr :.3f}")
