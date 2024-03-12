@@ -55,6 +55,9 @@ def seed_everything(seed=11711):
 BERT_HIDDEN_SIZE = 768
 N_SENTIMENT_CLASSES = 5
 
+num_hidden_sentiment_layers = 2
+num_hidden_paraphrase_layers = 2
+num_hidden_similarity_layers = 2
 
 class MultitaskBERT(nn.Module):
     '''
@@ -75,19 +78,37 @@ class MultitaskBERT(nn.Module):
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
                 
-        # Sentiment classification layer
-        self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
+        # Sentiment classification layers
+        sentiment_hidden_layers = nn.ModuleList(
+            [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_sentiment_layers)]
+        )
+        sentiment_final_layer = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
+        self.sentiment_classifier_layers = sentiment_hidden_layers + [sentiment_final_layer]
+
+        # self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
 
         # Paraphrase detection layer
-        # self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
-        self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE, 1)
+        
+        paraphrase_hidden_layers = nn.ModuleList(
+            [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_paraphrase_layers)]
+        )
+        paraphrase_final_layer = nn.Linear(BERT_HIDDEN_SIZE, 1)
+        self.paraphrase_classifier_layers = paraphrase_hidden_layers + [paraphrase_final_layer]
+
+        # self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE, 1)
 
         # Semantic Textual Similarity layer
         # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
-        self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE, 1)
+        # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE, 1)
+
+        similarity_hidden_layers = nn.ModuleList(
+            [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_similarity_layers)]
+        )
+        similarity_final_layer = nn.Linear(BERT_HIDDEN_SIZE, 1)
+        self.similarity_classifier_layers = similarity_hidden_layers + [similarity_final_layer]
         
         # Dropout layer
-        self.dropout_sentiment = nn.Dropout(config.hidden_dropout_prob)
+        self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
 
         # Tokenizer
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -104,6 +125,19 @@ class MultitaskBERT(nn.Module):
         classification_embedding = outputs['pooler_output']
 
         return classification_embedding
+    
+    def forward_head_layers(self, layers, x):
+        # loop over hidden layers
+        for i in range(len(layers)-1):
+            x = self.dropout_layer(x)
+            x = layers[i](x)
+            x = F.relu(x)
+
+        # pass through final layer
+        x = self.dropout_layer(x)
+        x = layers[-1](x)
+        
+        return x
 
     def predict_sentiment(self, input_ids, attention_mask):
         '''Given a batch of sentences, outputs logits for classifying sentiment.
@@ -115,8 +149,10 @@ class MultitaskBERT(nn.Module):
         # encode the input_ids and attention_mask using the BERT model
         # outputs = self.bert(input_ids, attention_mask)
         classification_embeddings = self.forward(input_ids, attention_mask)
-        classification_embeddings = self.dropout_sentiment(classification_embeddings)
-        sentiment_logits = self.sentiment_classifier(classification_embeddings)
+        # classification_embeddings = self.dropout_sentiment(classification_embeddings)
+        # sentiment_logits = self.sentiment_classifier(classification_embeddings)
+
+        sentiment_logits = self.forward_head_layers(self.sentiment_classifier_layers, classification_embeddings)
 
         return sentiment_logits
         
@@ -164,8 +200,10 @@ class MultitaskBERT(nn.Module):
         class_embed = self.forward(input_id, global_attention_mask)
 
         # pass the combined classification embedding through the paraphrase classifier
-        paraphrase_logits = self.paraphrase_classifier(class_embed)
+        # paraphrase_logits = self.paraphrase_classifier(class_embed)
         # TODO: add more hidden layers here
+
+        paraphrase_logits = self.forward_head_layers(self.paraphrase_classifier_layers, class_embed)
 
         return paraphrase_logits
 
@@ -197,8 +235,10 @@ class MultitaskBERT(nn.Module):
         class_embed = self.forward(input_id, global_attention_mask)
 
         # pass the combined classification embedding through the paraphrase classifier
-        paraphrase_logits = self.similarity_classifier(class_embed)
+        # paraphrase_logits = self.similarity_classifier(class_embed)
         # TODO: add more hidden layers here
+
+        paraphrase_logits = self.forward_head_layers(self.similarity_classifier_layers, class_embed)
 
         return paraphrase_logits
 
