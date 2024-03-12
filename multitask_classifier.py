@@ -378,7 +378,11 @@ def train_multitask(args):
         for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
             losses = []
             for task in ["sst", "para", "sts"]:
-                loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model, weight)
+                loss_task = None
+                if not args.use_vac:
+                    loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model, weight)
+                else: 
+                    loss_task = process_batch(task, iterators, iterator_dataloaders, args.accum_steps, device, model, weight)
                 iterator_batch_nums[task] += 1
                 losses.append(loss_task)
                 iterator_batch_losses[task] += loss_task.item()
