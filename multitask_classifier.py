@@ -267,7 +267,6 @@ class MultitaskBERT(nn.Module):
         # similarity_logits = self.similarity_classifier(combined_class_embedding)
 
         # return similarity_logits
-    
 
 def save_model(model, args, config, filepath):
     save_info = {
@@ -336,8 +335,6 @@ def process_batch(task, iterators, iterator_dataloaders, batch_size, device, mod
         loss = F.mse_loss(logits.view(-1).float(), b_labels.view(-1).float(), reduction='sum') / args.batch_size
     return loss
 
-
-
 def train_multitask(args):
     '''Train MultitaskBERT.
 
@@ -398,8 +395,56 @@ def train_multitask(args):
     accumulation_steps = args.accum_steps//args.batch_size
     pc_optimizer = PCGrad(optimizer)
     scaler = torch.cuda.amp.GradScaler()
-    print(args.use_vac)
+    print("USE_VAC:", args.use_vac)
     grad_vac_optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
+
+    # PARA EXTRA TRAINING
+    # START
+    print("STARTING PARA EXTRA TRAINING")
+    for epoch in range(3):
+        model.train()
+        iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
+        iterator_batch_losses = {"sst": 0, "para": 0, "sts": 0}
+        for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
+            losses = []
+            for task in ["para"]:
+                loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model)
+                iterator_batch_nums[task] += 1
+                losses.append(loss_task)
+                iterator_batch_losses[task] += loss_task.item()
+            if args.use_vac:
+                grad_vac_optimizer.backward(losses)
+            else: 
+                pc_optimizer.pc_backward(losses)
+            if args.use_vac:
+                if (i + 1) % accumulation_steps == 0:
+                    grad_vac_optimizer.step()
+                    grad_vac_optimizer.zero_grad()
+            else:
+                pc_optimizer.step()
+                pc_optimizer.zero_grad()
+            torch.cuda.empty_cache()
+
+        dev_sentiment_accuracy,_, _, \
+            dev_paraphrase_accuracy, _, _, \
+            dev_sts_corr, _, _ = model_eval_multitask(sst_dev_dataloader,
+                                                                    para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+        
+        for task in ["para"]:
+            print(f"Epoch {epoch} {task}: train loss :: {iterator_batch_losses[task]/iterator_batch_nums[task] :.3f}")
+        print(f"Epoch {epoch} (sst): dev acc :: {dev_sentiment_accuracy :.3f}") 
+        print(f"Epoch {epoch} (para): dev acc :: {dev_paraphrase_accuracy :.3f}")
+        print(f"Epoch {epoch} (sts): dev acc :: {dev_sts_corr :.3f}")
+        mean_dev = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr)/3
+        
+        if mean_dev > best_dev_acc:
+            best_dev_acc = mean_dev
+            save_model(model, args, config, args.filepath)
+    print("FINISHED PARA EXTRA TRAINING")
+    # END
+
+
     for epoch in range(args.epochs):
         model.train()
         iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
