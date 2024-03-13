@@ -55,7 +55,7 @@ def seed_everything(seed=11711):
 BERT_HIDDEN_SIZE = 768
 N_SENTIMENT_CLASSES = 5
 
-num_hidden_sentiment_layers = 2
+num_hidden_sentiment_layers = 1
 num_hidden_paraphrase_layers = 2
 num_hidden_similarity_layers = 2
 
@@ -89,10 +89,17 @@ class MultitaskBERT(nn.Module):
 
         # Paraphrase detection layer
         
+        # paraphrase_hidden_layers = nn.ModuleList(
+        #     [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_paraphrase_layers)]
+        # )
+        # paraphrase_final_layer = nn.Linear(BERT_HIDDEN_SIZE, 1)
         paraphrase_hidden_layers = nn.ModuleList(
-            [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_paraphrase_layers)]
+            [
+                nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE),
+                nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE//4),
+            ]
         )
-        paraphrase_final_layer = nn.Linear(BERT_HIDDEN_SIZE, 1)
+        paraphrase_final_layer = nn.Linear(BERT_HIDDEN_SIZE//4, 1)
         self.paraphrase_classifier_layers = paraphrase_hidden_layers + [paraphrase_final_layer]
 
         # self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE, 1)
@@ -101,10 +108,17 @@ class MultitaskBERT(nn.Module):
         # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
         # self.similarity_classifier = nn.Linear(BERT_HIDDEN_SIZE, 1)
 
+        # similarity_hidden_layers = nn.ModuleList(
+        #     [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_similarity_layers)]
+        # )
+        # similarity_final_layer = nn.Linear(BERT_HIDDEN_SIZE, 1)
         similarity_hidden_layers = nn.ModuleList(
-            [nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE) for _ in range(num_hidden_similarity_layers)]
+            [
+                nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE),
+                nn.Linear(BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE//4),
+            ]
         )
-        similarity_final_layer = nn.Linear(BERT_HIDDEN_SIZE, 1)
+        similarity_final_layer = nn.Linear(BERT_HIDDEN_SIZE//4, 1)
         self.similarity_classifier_layers = similarity_hidden_layers + [similarity_final_layer]
         
         # Dropout layer
