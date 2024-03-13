@@ -394,7 +394,48 @@ def train_multitask(args):
     scaler = torch.cuda.amp.GradScaler()
     print(args.use_vac)
     weight = args.smart_weight
+    print(weight)
     grad_vac_optimizer = GradVacAMP(3, optimizer, device, scaler = scaler, beta = 1e-2, reduction='sum', cpu_offload = False)
+    for epoch in range(3):
+        model.train()
+        iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
+        iterator_batch_losses = {"sst": 0, "para": 0, "sts": 0}
+        for i in tqdm(range(len(sts_train_dataloader)), desc=f'Train {epoch}', disable=TQDM_DISABLE, smoothing=0):
+            losses = []
+            for task in ["para"]:
+                loss_task = process_batch(task, iterators, iterator_dataloaders, args.batch_size, device, model, weight)
+                iterator_batch_nums[task] += 1
+                losses.append(loss_task)
+                iterator_batch_losses[task] += loss_task.item()
+            if args.use_vac:
+                grad_vac_optimizer.backward(losses)
+            else: 
+                pc_optimizer.pc_backward(losses)
+            if args.use_vac:
+                if (i + 1) % accumulation_steps == 0:
+                    grad_vac_optimizer.step()
+                    grad_vac_optimizer.zero_grad()
+            else:
+                pc_optimizer.step()
+                pc_optimizer.zero_grad()
+            torch.cuda.empty_cache()
+
+        dev_sentiment_accuracy,_, _, \
+            dev_paraphrase_accuracy, _, _, \
+            dev_sts_corr, _, _ = model_eval_multitask(sst_dev_dataloader,
+                                                                    para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+        
+        for task in ["para"]:
+            print(f"Epoch {epoch} {task}: train loss :: {iterator_batch_losses[task]/iterator_batch_nums[task] :.3f}")
+        print(f"Epoch {epoch} (sst): dev acc :: {dev_sentiment_accuracy :.3f}") 
+        print(f"Epoch {epoch} (para): dev acc :: {dev_paraphrase_accuracy :.3f}")
+        print(f"Epoch {epoch} (sts): dev acc :: {dev_sts_corr :.3f}")
+        mean_dev = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr)/3
+        
+        if mean_dev > best_dev_acc:
+            best_dev_acc = mean_dev
+            save_model(model, args, config, args.filepath)
     for epoch in range(args.epochs):
         model.train()
         iterator_batch_nums = {"sst": 0, "para": 0, "sts": 0}
@@ -435,6 +476,7 @@ def train_multitask(args):
         if mean_dev > best_dev_acc:
             best_dev_acc = mean_dev
             save_model(model, args, config, args.filepath)
+  
     
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
