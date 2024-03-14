@@ -103,13 +103,15 @@ class BertLayer(nn.Module):
     # before it is added to the sub-layer input and normalized with a layer norm.
     
     # Transform using the dense layer to the output.
-    output = dense_layer(output)
+    # output = dense_layer(output)
 
     # Apply dropout to the output.
-    output = dropout(output)
+    # output = dropout(output)
 
     # Add input and output
-    output = input + output
+    # output = input + output
+
+    output = input + dense_layer(dropout(output))
 
     # Apply layer normalization to the output.
     output = ln_layer(output)
@@ -139,12 +141,12 @@ class BertLayer(nn.Module):
     
     # 3. A feed forward layer.
     # attention_output -> interm_dense -> interm_af -> output
-    interm_output = self.interm_af(self.interm_dense(attention_output))
+    intermediate_output = self.interm_af(self.interm_dense(attention_output))
 
     # 4. The add-norm operation that takes the input and output of the feed forward layer.
     # add_norm(input, output, dense_layer, dropout, ln_layer)
     output = self.add_norm(
-      attention_output, interm_output, self.out_dense, self.out_dropout, self.out_layer_norm
+      attention_output, intermediate_output, self.out_dense, self.out_dropout, self.out_layer_norm
     )
 
     return output
@@ -197,10 +199,10 @@ class BertModel(BertPreTrainedModel):
     # Get token type ids. Since we are not considering token type, this embedding is
     # just a placeholder.
     tk_type_ids = torch.zeros(input_shape, dtype=torch.long, device=input_ids.device)
-    tk_type_embeds = self.tk_type_embedding(tk_type_ids)
+    tk_type_embeddings = self.tk_type_embedding(tk_type_ids)
     
     # add the three embeddings together
-    hidden_states = inputs_embeds + pos_embeds + tk_type_embeds
+    hidden_states = inputs_embeds + pos_embeds + tk_type_embeddings
 
     # apply layer norm
     hidden_states = self.embed_layer_norm(hidden_states)
